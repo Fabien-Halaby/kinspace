@@ -204,4 +204,4 @@ Issues and pull requests are welcome. If you're adding a new domain feature, sta
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE.md).
