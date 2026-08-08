@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: kinspace-postgres
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_USER: kinspace
+      POSTGRES_PASSWORD: spacekin
+      POSTGRES_DB: kinspace
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinspace -d kinspace"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
