@@ -14,9 +14,7 @@ import (
 
 type postgresRepository struct{ db *pgxpool.Pool }
 
-func NewPostgresRepository(db *pgxpool.Pool) Repository {
-	return &postgresRepository{db: db}
-}
+func NewPostgresRepository(db *pgxpool.Pool) Repository { return &postgresRepository{db: db} }
 
 func (r *postgresRepository) Create(ctx context.Context, name, email, passwordHash string) (User, error) {
 	var user User
@@ -51,18 +49,16 @@ func (r *postgresRepository) FindByEmail(ctx context.Context, email string) (Use
 
 func RegisterHandler(service *Service) gin.HandlerFunc {
 	type request struct {
-		Name     string `json:"name" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
+		Name string `json:"name" binding:"required"`
+		Email string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required,min=8"`
 	}
-
 	return func(c *gin.Context) {
 		var req request
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "details": err.Error()})
 			return
 		}
-
 		user, err := service.Register(c.Request.Context(), req.Name, req.Email, req.Password)
 		if errors.Is(err, ErrEmailExists) {
 			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
@@ -72,7 +68,31 @@ func RegisterHandler(service *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
 		c.JSON(http.StatusCreated, gin.H{"user": user})
+	}
+}
+
+func LoginHandler(service *Service, issueToken func(User) (string, error)) gin.HandlerFunc {
+	type request struct {
+		Email string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+	}
+	return func(c *gin.Context) {
+		var req request
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "details": err.Error()})
+			return
+		}
+		user, err := service.Login(c.Request.Context(), req.Email, req.Password)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			return
+		}
+		token, err := issueToken(user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not issue token"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
 	}
 }
