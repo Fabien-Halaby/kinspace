@@ -10,7 +10,6 @@ import (
 )
 
 var ErrEmailExists = errors.New("email already exists")
-
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type User struct {
@@ -26,15 +25,13 @@ type Repository interface {
 	FindByEmail(ctx context.Context, email string) (User, error)
 }
 
-type Service struct {
-	repo Repository
-}
+type Service struct{ repo Repository }
 
 func NewService(repo Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) Register(ctx context.Context, name, email, password string) (User, error) {
 	name = strings.TrimSpace(name)
-	email = strings.ToLower(strings.TrimSpace(email))
+	email = normalizeEmail(email)
 	if len(name) < 2 || len(name) > 100 {
 		return User{}, fmt.Errorf("name must be between 2 and 100 characters")
 	}
@@ -49,10 +46,22 @@ func (s *Service) Register(ctx context.Context, name, email, password string) (U
 	if err != nil {
 		return User{}, fmt.Errorf("hash password: %w", err)
 	}
-
 	user, err := s.repo.Create(ctx, name, email, string(hash))
 	if err != nil {
 		return User{}, err
 	}
 	return user, nil
 }
+
+func (s *Service) Login(ctx context.Context, email, password string) (User, error) {
+	user, err := s.repo.FindByEmail(ctx, normalizeEmail(email))
+	if err != nil {
+		return User{}, ErrInvalidCredentials
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return User{}, ErrInvalidCredentials
+	}
+	return user, nil
+}
+
+func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
