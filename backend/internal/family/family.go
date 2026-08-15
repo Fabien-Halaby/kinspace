@@ -28,6 +28,10 @@ type Repository interface {
 type Service struct{ repo Repository }
 func NewService(repo Repository) *Service { return &Service{repo: repo} }
 
+func (s *Service) Me(ctx context.Context, userID int64) (Family, error) {
+	return s.repo.FindByUserID(ctx, userID)
+}
+
 func (s *Service) Create(ctx context.Context, userID int64, name string) (Family, error) {
 	name = strings.TrimSpace(name)
 	if len(name) < 2 || len(name) > 120 { return Family{}, fmt.Errorf("family name must be between 2 and 120 characters") }
