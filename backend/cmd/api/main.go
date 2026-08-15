@@ -1,44 +1,87 @@
+// Package main is the composition root of the KinSpace API. It wires the
+// configuration, storage, application services and HTTP server, then
+// manages the process lifecycle (startup, signals, graceful shutdown).
 package main
 
 import (
 	"context"
 	"errors"
-	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/Fabien-Halaby/kinspace/backend/internal/auth"
+	"github.com/Fabien-Halaby/kinspace/backend/internal/application"
 	"github.com/Fabien-Halaby/kinspace/backend/internal/config"
-	"github.com/Fabien-Halaby/kinspace/backend/internal/database"
-	"github.com/Fabien-Halaby/kinspace/backend/internal/family"
-	"github.com/Fabien-Halaby/kinspace/backend/internal/middleware"
-	"github.com/Fabien-Halaby/kinspace/backend/internal/relation"
-	"github.com/gin-gonic/gin"
+	"github.com/Fabien-Halaby/kinspace/backend/internal/httpapi"
+	"github.com/Fabien-Halaby/kinspace/backend/internal/logger"
+	"github.com/Fabien-Halaby/kinspace/backend/internal/storage/postgres"
+	"github.com/Fabien-Halaby/kinspace/backend/internal/token"
 )
 
 func main() {
-	cfg, err := config.Load(); if err != nil { log.Fatal(err) }
+	cfg, err := config.Load()
+	if err != nil {
+		os.Stderr.WriteString("config: " + err.Error() + "\n")
+		os.Exit(1)
+	}
+	log := logger.New(cfg.Environment)
+
 	ctx := context.Background()
-	db, err := database.Connect(ctx, cfg.DatabaseURL); if err != nil { log.Fatal(err) }; defer db.Close()
-	if err := database.Migrate(ctx, db); err != nil { log.Fatal(err) }
+	pool, err := postgres.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Error("connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
 
-	authService := auth.NewService(auth.NewPostgresRepository(db))
-	tokens, err := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTTTL); if err != nil { log.Fatal(err) }
-	familyService := family.NewService(family.NewPostgresRepository(db))
-	relationService := relation.NewService(relation.NewPostgresRepository(db))
+	if err := postgres.Migrate(ctx, pool); err != nil {
+		log.Error("apply migrations", "error", err)
+		os.Exit(1)
+	}
 
-	router := gin.Default()
-	router.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status":"ok","service":"kinspace-api"}) })
-	api := router.Group("/api/v1")
-	api.POST("/auth/register", auth.RegisterHandler(authService))
-	api.POST("/auth/login", auth.LoginHandler(authService, tokens.Issue))
+	tokens := token.NewHS256Manager(cfg.JWTSecret, cfg.JWTTTL)
+	userRepo := postgres.NewUserRepository(pool)
+	familyRepo := postgres.NewFamilyRepository(pool)
+	relationRepo := postgres.NewRelationRepository(pool)
 
-	protected := api.Group("", middleware.RequireAuth(tokens))
-	authUser := func(c *gin.Context) (int64, bool) { v, ok := c.Get("user_id"); if !ok { return 0,false }; id,ok:=v.(int64); return id,ok }
-	familyID := func(c *gin.Context, userID int64) (int64,error) { f,err:=familyService.Me(c.Request.Context(),userID); return f.ID,err }
+	deps := httpapi.Dependencies{
+		Environment: cfg.Environment,
+		Logger:      log,
+		Tokens:      tokens,
+		Auth:        application.NewAuthService(userRepo, tokens),
+		Families:    application.NewFamilyService(familyRepo),
+		Relations:   application.NewRelationService(relationRepo),
+	}
 
-	family.RegisterHandlers(protected, familyService, authUser)
-	relation.RegisterHandlers(protected, relationService, authUser, familyID)
-	protected.GET("/auth/me", func(c *gin.Context) { id,_:=authUser(c); c.JSON(200,gin.H{"user_id":id}) })
-	protected.GET("/families/me", func(c *gin.Context) { id,_:=authUser(c); f,err:=familyService.Me(c.Request.Context(),id); if errors.Is(err,family.ErrFamilyNotFound){c.JSON(404,gin.H{"error":err.Error()});return};if err!=nil{c.JSON(500,gin.H{"error":"could not load family"});return};c.JSON(200,gin.H{"family":f}) })
+	server := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           httpapi.NewRouter(deps),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 
-	if err := router.Run(":" + cfg.Port); err != nil { log.Fatal(err) }
+	go func() {
+		log.Info("kinspace api listening", "addr", server.Addr, "environment", cfg.Environment)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Info("shutting down server")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Error("graceful shutdown failed", "error", err)
+		os.Exit(1)
+	}
+	log.Info("server stopped")
 }

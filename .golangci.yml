@@ -1,0 +1,47 @@
+# golangci-lint configuration (see https://golangci-lint.run)
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - misspell
+    - unconvert
+    - nilerr
+    - noctx
+    - wastedassign
+    - revive
+  settings:
+    gosec:
+      excludes:
+        # G101: JWT secret handled by configuration validation (>= 32 chars)
+        - G101
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Integration tests need a lower-level harness.
+      - path: _test\.go
+        linters:
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

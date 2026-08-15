@@ -1,0 +1,17 @@
+# Environment files (secrets)
+.env
+.env.local
+*.env
+!**/.env.example
+
+# Build artifacts
+backend/bin/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
