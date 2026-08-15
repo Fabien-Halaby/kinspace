@@ -15,3 +15,5 @@ backend/bin/
 
 # Logs
 *.log
+
+mobile/node_modules/
