@@ -1,50 +1,47 @@
-# Welcome to your Expo app 👋
+# KinSpace mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+React Native app for KinSpace, built with [Expo SDK 54](https://expo.dev) and
+[Expo Router](https://docs.expo.dev/router/introduction).
 
-## Get started
+## Features
 
-1. Install dependencies
+- **Authentication** — register and login against the KinSpace API; the session token is
+  persisted in the platform keychain (`expo-secure-store`) and restored on startup.
+- **Home** — current profile and family, with a place for the upcoming feed.
+- **Family** — create a family, join one with an invite code, browse the relationship
+  graph and add relations between members.
 
-   ```bash
-   npm install
-   ```
+## Structure
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+mobile/
+├── app/
+│   ├── _layout.tsx         → providers + route guards (auth vs. tabs)
+│   ├── (auth)/
+│   │   ├── login.tsx
+│   │   └── register.tsx
+│   └── (tabs)/
+│       ├── index.tsx       → Home
+│       └── family.tsx      → Family
+└── src/
+    ├── api/                → typed HTTP client, endpoints, token storage
+    ├── auth/               → session context (useAuth)
+    └── components/         → reusable themed UI (FormField, PrimaryButton)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Getting started
 
-## Learn more
+```bash
+npm install
+npx expo start
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+The app reaches the API at `http://<expo-host>:8080/api/v1` automatically. To override,
+set `EXPO_PUBLIC_API_URL` in `.env.local` (see `.env.example`).
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Checks
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npx tsc --noEmit   # type-check
+npx expo lint      # lint
+```
